@@ -1,0 +1,82 @@
+@startuml
+
+title basaltrock-private-cloud — Bedrock-shaped RAG, fully local
+
+' ── Actors ──────────────────────────────────────────────
+left to right direction
+
+actor "User" as user
+folder "DATA_FOLDER\n(any local folder)" as userfolder
+user -[hidden]- userfolder
+
+package "Docker" {
+
+  package "private-cloud" #LightYellow {
+
+    package "Object Store" #Wheat {
+      database "SeaweedFS\nS3 API :8333" as s3
+      rectangle "<bucket per data folder>\nbasaltrock\nbasaltrock-private-cloud\n<locale>" as buckets
+      s3 -- buckets
+    }
+
+    rectangle "ingestion-s3.py\nS3 Data Source" as s3ingest
+    rectangle "files-server.py\nDocument Download :8081" as files
+    rectangle "index.html\nChat UI" as ui
+    rectangle "system-prompt.txt\n{context} {history} {question}" as prompt
+  }
+
+  package basaltrock {
+    package "API Service" #LightBlue {
+      rectangle "bedrock_api.py" as bedrockapi
+      rectangle "shared.py\nVector Store" as shared
+    }
+
+    package "Ingestion Service" #LightGreen {
+      rectangle "ingestion.py\nextract + chunk" as ingestion
+    }
+
+    database "OpenSearch\nIndex" as osindex
+  }
+
+  package "Model Runner" #LightPink {
+    rectangle "llama.cpp" as modelrunner
+    component "ai/gemma3:4b-q4_K_M\nChat Model" as chatmodel
+    component "ai/nomic-embed-text-v2-moe\nEmbedding Model" as embedmodel
+
+    modelrunner --> chatmodel
+    modelrunner --> embedmodel
+  }
+}
+
+' ── Ingest path ─────────────────────────────────────────
+userfolder --> s3 : make up / make ingest\nupload (rclone)
+s3ingest --> s3 : list + get objects
+s3ingest --> ingestion : stage as <bucket>/<key>
+ingestion --> embedmodel : create embeddings
+ingestion --> osindex : write embeddings
+
+' ── Query path ──────────────────────────────────────────
+user --> ui : question
+ui --> bedrockapi : 1. POST /knowledgebases/{id}/retrieve\n(question only)
+ui --> bedrockapi : 2. POST /model/{id}/converse\n(context + history)
+ui ..> prompt : placeholders
+bedrockapi --> shared
+shared --> embedmodel : query embedding
+shared --> osindex : vector search (top-K)
+shared --> chatmodel : generate response
+
+' ── Download path ───────────────────────────────────────
+user --> files : click a cited source
+files --> s3 : get object
+
+legend bottom
+  Bedrock API shape, local implementation:
+  |= Bedrock |= here |
+  | S3 data source | SeaweedFS bucket |
+  | Titan embeddings | nomic-embed-text-v2-moe |
+  | Claude / Nova | gemma3 via Model Runner |
+  | OpenSearch Serverless | OpenSearch single node |
+  | IAM | none — single-host, no credentials |
+endlegend
+
+@enduml

@@ -14,11 +14,17 @@ Run standalone, or include the Makefile from a locale repo (see
 ## Usage
 
 ```bash
-make up          # download basaltrock + start on :80
-make ingest      # re-index after changing documents
-make down        # stop, keeping the OpenSearch index
-make help        # all targets
+make up DATA_FOLDER=xyz   # index xyz and start on :80
+make ingest               # re-index after changing documents
+make down                 # stop, keeping the index
+make help                 # all targets
 ```
+
+Answers cite their sources; each citation is a download link to the original
+document.
+
+Folder and file names must be ASCII. Document *contents* may be in any
+language.
 
 ## Reuse from a locale repo
 

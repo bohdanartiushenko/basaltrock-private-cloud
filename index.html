@@ -210,6 +210,11 @@
             word-break: break-all;
         }
 
+        .source-dl {
+            color: #4a5568;
+            white-space: nowrap;
+        }
+
         .source-text {
             font-size: 13px;
             color: #2d3748;
@@ -337,6 +342,8 @@
     const clearBtn = document.getElementById('clearBtn');
 
     const history = [];
+    const FILES_BASE = `${location.protocol}//${location.hostname}:{{ file_port | default(8081) }}`;
+    const KEY_SEP = '⁄';
 
     clearBtn.addEventListener('click', () => {
         history.length = 0;
@@ -368,9 +375,14 @@
             const item = document.createElement('div');
             item.className = 'source-item';
             const score = ref.score ? ` | Relevance: ${(ref.score * 100).toFixed(1)}%` : '';
-            const uri = ref.location?.s3Location?.uri || 'document';
+            const uri = ref.location?.s3Location?.uri || '';
+            const path = uri.replace(/^[a-z0-9]+:\/\//i, '').split(KEY_SEP).join('/');
+            const href = FILES_BASE + '/' + path.split('/').map(encodeURIComponent).join('/');
+            const label = path
+                ? `<a class="source-dl" href="${href}" download>${escapeHtml(path)}</a>`
+                : '<strong>document</strong>';
             item.innerHTML = `
-                <div class="source-meta"><strong>${escapeHtml(uri)}</strong>${score}</div>
+                <div class="source-meta">${label}${score}</div>
                 <div class="source-text">${escapeHtml(ref.content?.text || '')}</div>
             `;
             details.appendChild(item);

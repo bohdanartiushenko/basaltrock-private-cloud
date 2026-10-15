@@ -4,13 +4,98 @@ services:
       - opensearch_data:/usr/share/opensearch/data
 
   api:
+    depends_on: !override
+      opensearch:
+        condition: service_healthy
     environment:
       RAG_SYSTEM_PROMPT_TEMPLATE: ${RAG_SYSTEM_PROMPT_TEMPLATE:-}
     volumes:
       - ${INDEX_HTML_PATH}:/app/index.html:ro
 
+  files:
+    image: python:3.13-slim
+    ports:
+      - "${FILE_PORT:-8081}:8080"
+    environment:
+      FILE_ROOTS: /srv/data
+      S3_ENDPOINT: ${FILES_S3_ENDPOINT:-}
+      S3_BUCKETS: ${S3_BUCKETS:-}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-basaltrock}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-basaltrock}
+    volumes:
+      - ${DATA_FOLDER_PATH:-./data}:/srv/data:ro
+      - ${FILES_SERVER_PATH:-./files-server.py}:/app/files-server.py:ro
+    command:
+      - sh
+      - -c
+      - 'if [ -n "$$S3_ENDPOINT" ]; then pip install --no-cache-dir -q boto3; fi; python /app/files-server.py'
+
+  s3:
+    image: chrislusf/seaweedfs:4.48
+    profiles: ["s3"]
+    command: server -dir=/data -s3 -s3.port=8333 -master.volumeSizeLimitMB=1024
+    ports:
+      - "${S3_PORT:-8333}:8333"
+      - "8888:8888"
+    volumes:
+      - s3_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8333 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  ingestion-s3:
+    profiles: ["s3"]
+    build:
+      context: ${DOCKER_DIR_PATH:-.}
+      dockerfile: Dockerfile
+      target: ingestion
+    depends_on:
+      s3:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+    environment:
+      MODEL_RUNNER_BASE_URL: ""
+      MODEL_RUNNER_LLM_EMBEDDING: ""
+      DOC_ANSI_CODEPAGE: ${DOC_ANSI_CODEPAGE:-cp1251}
+      OPENSEARCH_URL: http://opensearch:9200
+      S3_ENDPOINT: http://s3:8333
+      S3_BUCKETS: ${S3_BUCKETS:-}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-basaltrock}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-basaltrock}
+    volumes:
+      - rag_cache:/app/cache
+      - ${INGESTION_S3_PATH:-./ingestion-s3.py}:/app/ingestion-s3.py:ro
+    models:
+      embedding-model:
+        endpoint_var: MODEL_RUNNER_BASE_URL
+        model_var: MODEL_RUNNER_LLM_EMBEDDING
+    command: ["sh", "-c", "pip install --no-cache-dir -q boto3 && python /app/ingestion-s3.py"]
+
+  s3-sync:
+    image: rclone/rclone:1.71
+    profiles: ["s3"]
+    depends_on:
+      s3:
+        condition: service_healthy
+    environment:
+      RCLONE_CONFIG_S3_TYPE: s3
+      RCLONE_CONFIG_S3_PROVIDER: Other
+      RCLONE_CONFIG_S3_ENDPOINT: http://s3:8333
+      RCLONE_CONFIG_S3_FORCE_PATH_STYLE: "true"
+      RCLONE_CONFIG_S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY:-basaltrock}
+      RCLONE_CONFIG_S3_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:-basaltrock}
+    volumes:
+      - ${DATA_FOLDER_PATH:-./data}:/data
+      - ${SEED_ROOT:-.}:/seed:ro
+    entrypoint: ["rclone"]
+    command: ["listremotes"]
+
 volumes:
   opensearch_data:
+  s3_data:
 
 models:
   chat-model:
