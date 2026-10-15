@@ -1,0 +1,17 @@
+services:
+  opensearch:
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+
+  api:
+    environment:
+      RAG_SYSTEM_PROMPT_TEMPLATE: ${RAG_SYSTEM_PROMPT_TEMPLATE:-}
+    volumes:
+      - ${INDEX_HTML_PATH}:/app/index.html:ro
+
+volumes:
+  opensearch_data:
+
+models:
+  chat-model:
+    model: ${MODEL_RUNNER_LLM_CHAT:-ai/gemma3:4b-q4_K_M}
