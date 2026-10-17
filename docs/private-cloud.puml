@@ -11,7 +11,7 @@ user -[hidden]- userfolder
 
 package "Docker" {
 
-  package "private-cloud" #LightYellow {
+  package "basaltrock-private-cloud" #LightYellow {
 
     package "Object Store" #Wheat {
       database "SeaweedFS\nS3 API :8333" as s3
