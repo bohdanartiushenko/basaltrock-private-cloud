@@ -3,6 +3,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Docker 4.40+](https://img.shields.io/badge/Docker-4.40%2B%20(Model%20Runner)-blue?logo=docker)](https://www.docker.com/)
 [![Make](https://img.shields.io/badge/Make-build%20tool-orange?logo=gnu)](Makefile)
+<a href="https://github.com/seaweedfs/seaweedfs"><img src="docs/seaweedfs.svg" alt="" height="20" align="top"></a>
+[![SeaweedFS](https://img.shields.io/badge/SeaweedFS-object%20store-blue)](https://github.com/seaweedfs/seaweedfs)
 
 Private-cloud RAG stack over [basaltrock](https://github.com/bohdanartiushenko/basaltrock).
 Put documents in one folder and ask them in plain language. Everything runs on your
@@ -25,6 +27,42 @@ document.
 
 Folder and file names must be ASCII. Document *contents* may be in any
 language.
+
+## Several data sources
+
+One `DATA_FOLDER` is one data source, named after the folder. Add more by
+copying a folder in, then re-indexing:
+
+```bash
+make store sync ./archive store://archive
+make ingest
+```
+
+`make ingest` indexes every data source it finds, so a new one needs no
+configuration. `make store` passes its arguments to
+[rclone](https://rclone.org/commands/), so `ls`, `copy`, `delete` and friends
+work too, in either direction:
+
+```bash
+make store ls store://archive          # list one source
+make store sync store://archive ./out  # copy a source back out
+```
+
+`make ingest` is also spelled `make basaltrock-agent start-ingestion-job`, and
+`make ls` as `make basaltrock-agent list-knowledge-base-documents`, mirroring
+`aws bedrock-agent`.
+
+## Architecture
+
+![Architecture](docs/private-cloud.png)
+
+Source: [`docs/private-cloud.puml`](docs/private-cloud.puml).
+
+Documents are held in a single-node
+[SeaweedFS](https://github.com/seaweedfs/seaweedfs) store (Apache-2.0), which
+plays the part of Bedrock's S3 data source: one bucket per data source, and the
+same path-style S3 API. `make` drives it, so the targets above are all that is
+needed day to day.
 
 ## Reuse from a locale repo
 

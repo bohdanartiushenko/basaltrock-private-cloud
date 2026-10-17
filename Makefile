@@ -19,6 +19,8 @@ PRIVATE_CLOUD_DIR ?= .
 BASALTROCK_GH ?= bohdanartiushenko/basaltrock
 BASALTROCK_VERSION ?= $(shell curl -fsSL https://api.github.com/repos/$(BASALTROCK_GH)/releases/latest | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p')
 BASALTROCK ?= .basaltrock/$(BASALTROCK_VERSION)
+# Resolved once; sub-makes inherit it instead of querying the API again.
+export BASALTROCK_VERSION
 DOCKER_DIR = $(BASALTROCK)/src/main/resources/opensearch/docker
 
 DATA_FOLDER ?= data
@@ -36,6 +38,19 @@ S3_PORT ?= 8333
 FILE_PORT ?= 8081
 S3_EXTRA_BUCKETS ?=
 S3_BUCKETS = $(S3_BUCKET) basaltrock basaltrock-private-cloud $(S3_EXTRA_BUCKETS)
+
+# "make store sync ./folder store://name" — copy a folder into the store.
+ifeq (store,$(firstword $(MAKECMDGOALS)))
+STORE_WORDS = $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+STORE_SRC = $(firstword $(filter-out sync store://%,$(STORE_WORDS)))
+STORE_DST = $(patsubst store://%,%,$(firstword $(filter store://%,$(STORE_WORDS))))
+endif
+
+# "make basaltrock-agent start-ingestion-job" — the Bedrock-shaped spelling.
+ifeq (basaltrock-agent,$(firstword $(MAKECMDGOALS)))
+AGENT_CMD = $(word 2,$(MAKECMDGOALS))
+$(eval $(AGENT_CMD):;@:)
+endif
 SEED_FILES ?= README.md LICENSE
 SEED_SRC_basaltrock = $(BASALTROCK)
 SEED_SRC_basaltrock-private-cloud = $(PRIVATE_CLOUD_DIR)
@@ -65,7 +80,7 @@ export FILE_PORT
 
 COMPOSE_S3 = $(COMPOSE) --profile s3
 
-.PHONY: up down restart ingest ingest-local rtf2txt tune-models logs status prune help fetch ls s3-up s3-down s3-pull s3-push s3-buckets s3-seed s3-ls s3-ingest
+.PHONY: up down restart ingest ingest-local rtf2txt tune-models logs status prune help fetch ls store basaltrock-agent s3-up s3-down s3-pull s3-push s3-buckets s3-seed s3-ls s3-ingest
 
 $(DOCKER_DIR)/docker-compose.yml:
 	@echo "Downloading basaltrock $(BASALTROCK_VERSION) from github.com/$(BASALTROCK_GH)"
@@ -91,6 +106,15 @@ restart: down up
 
 ingest: s3-push s3-ingest
 
+# Bedrock-shaped aliases, mirroring "aws bedrock-agent <command>".
+AGENT_TARGET_start-ingestion-job = ingest
+AGENT_TARGET_list-knowledge-base-documents = s3-ls
+
+basaltrock-agent:
+	@$(if $(AGENT_TARGET_$(AGENT_CMD)),\
+		$(MAKE) --no-print-directory $(AGENT_TARGET_$(AGENT_CMD)),\
+		echo "unknown command '$(AGENT_CMD)'; try: start-ingestion-job list-knowledge-base-documents" >&2; exit 1)
+
 ingest-local:
 	$(COMPOSE) run --rm ingestion
 
@@ -113,6 +137,15 @@ s3-seed: s3-buckets
 	$(foreach b,$(filter-out $(S3_BUCKET),$(S3_BUCKETS)),$(if $(SEED_SRC_$(b)),\
 		$(foreach f,$(SEED_FILES),\
 			$(COMPOSE_S3) run --rm -T s3-sync copy "/seed/$(SEED_SRC_$(b))/$(f)" "s3:$(b)";)))
+
+# "make store sync ./folder store://name" — the folder becomes a data source.
+store:
+	@test -n "$(STORE_SRC)" -a -n "$(STORE_DST)" || \
+		{ echo "usage: make store sync <folder> store://<name>" >&2; exit 2; }
+	@test -d "$(STORE_SRC)" || { echo "no such folder: $(STORE_SRC)" >&2; exit 2; }
+	@$(MAKE) --no-print-directory s3-up
+	@DATA_FOLDER_PATH="$(abspath $(STORE_SRC))" \
+		$(COMPOSE_S3) run --rm s3-sync sync /data "s3:$(STORE_DST)" --progress
 
 s3-ingest:
 	$(COMPOSE_S3) run --rm --build ingestion-s3
@@ -153,8 +186,16 @@ help:
 	@echo "make fetch     - Download basaltrock $(BASALTROCK_VERSION) only"
 	@echo "make down      - Stop (OpenSearch data kept)"
 	@echo "make ingest    - Re-index after changing $(DATA_FOLDER)"
+	@echo "make store ... - Copy documents in or out, e.g."
+	@echo "                 make store sync ./archive store://archive"
+	@echo "make basaltrock-agent start-ingestion-job"
+	@echo "               - Same as 'make ingest', spelled like Bedrock"
 	@echo "make rtf2txt   - Convert .rtf in $(DATA_FOLDER) to .txt (macOS textutil)"
 	@echo "make ls        - List the indexed documents"
 	@echo "make logs      - Follow logs"
 	@echo "make status    - Show containers"
 	@echo "make prune     - Remove volumes (deletes indexed data)"
+
+# Swallow the words after "store"/"basaltrock-agent" so make does not try to
+# build them as targets.
+$(foreach a,$(STORE_WORDS) $(AGENT_CMD),$(eval $(subst :,\:,$(a)): ; @:))

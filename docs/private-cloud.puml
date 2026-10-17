@@ -49,7 +49,7 @@ package "Docker" {
 }
 
 ' ── Ingest path ─────────────────────────────────────────
-userfolder --> s3 : make up / make ingest\nupload (rclone)
+userfolder --> s3 : make up / make store sync\nupload (rclone)
 s3ingest --> s3 : list + get objects
 s3ingest --> ingestion : stage as <bucket>/<key>
 ingestion --> embedmodel : create embeddings

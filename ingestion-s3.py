@@ -22,8 +22,8 @@ s3 = boto3.client(
     config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
 )
 
-if not BUCKETS:
-    BUCKETS = [b["Name"] for b in s3.list_buckets().get("Buckets", [])]
+discovered = [b["Name"] for b in s3.list_buckets().get("Buckets", [])]
+BUCKETS = BUCKETS + [b for b in discovered if b not in BUCKETS] if BUCKETS else discovered
 
 stage = pathlib.Path(STAGE_DIR)
 stage.mkdir(parents=True, exist_ok=True)
