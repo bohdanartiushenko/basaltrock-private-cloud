@@ -14,37 +14,31 @@ package "Docker" {
   package "basaltrock-private-cloud" #LightYellow {
 
     package "Object Store" #Wheat {
-      database "SeaweedFS\nS3 API :8333" as s3
-      rectangle "<bucket per data folder>\nbasaltrock\nbasaltrock-private-cloud\n<locale>" as buckets
-      s3 -- buckets
+      database "SeaweedFS\nS3 API :8333 | filer :8888" as s3
     }
 
-    rectangle "ingestion-s3.py\nS3 Data Source" as s3ingest
-    rectangle "files-server.py\nDocument Download :8081" as files
-    rectangle "index.html\nChat UI" as ui
-    rectangle "system-prompt.txt\n{context} {history} {question}" as prompt
+    component "ingestion-s3.py\nS3 Data Source" as s3ingest
+    file "index.html\nChat UI" as ui
+    file "system-prompt.txt\n{context} {history} {question}" as prompt
   }
 
   package basaltrock {
     package "API Service" #LightBlue {
-      rectangle "bedrock_api.py" as bedrockapi
-      rectangle "shared.py\nVector Store" as shared
+      component "bedrock_api.py" as bedrockapi
+      component "shared.py\nVector Store" as shared
     }
 
     package "Ingestion Service" #LightGreen {
-      rectangle "ingestion.py\nextract + chunk" as ingestion
+      component "ingestion\nextract + chunk" as ingestion
     }
 
     database "OpenSearch\nIndex" as osindex
   }
 
   package "Model Runner" #LightPink {
-    rectangle "llama.cpp" as modelrunner
     component "ai/gemma3:4b-q4_K_M\nChat Model" as chatmodel
     component "ai/nomic-embed-text-v2-moe\nEmbedding Model" as embedmodel
 
-    modelrunner --> chatmodel
-    modelrunner --> embedmodel
   }
 }
 
@@ -66,17 +60,7 @@ shared --> osindex : vector search (top-K)
 shared --> chatmodel : generate response
 
 ' ── Download path ───────────────────────────────────────
-user --> files : click a cited source
-files --> s3 : get object
+user --> s3 : click a cited source\n(filer :8888 serves the object)
 
-legend bottom
-  Bedrock API shape, local implementation:
-  |= Bedrock |= here |
-  | S3 data source | SeaweedFS bucket |
-  | Titan embeddings | nomic-embed-text-v2-moe |
-  | Claude / Nova | gemma3 via Model Runner |
-  | OpenSearch Serverless | OpenSearch single node |
-  | IAM | none — single-host, no credentials |
-endlegend
 
 @enduml

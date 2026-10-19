@@ -342,7 +342,7 @@
     const clearBtn = document.getElementById('clearBtn');
 
     const history = [];
-    const FILES_BASE = `${location.protocol}//${location.hostname}:{{ file_port | default(8081) }}`;
+    const FILES_BASE = `${location.protocol}//${location.hostname}:{{ filer_port | default(8888) }}/buckets`;
     const KEY_SEP = '⁄';
 
     clearBtn.addEventListener('click', () => {
@@ -377,7 +377,7 @@
             const score = ref.score ? ` | Relevance: ${(ref.score * 100).toFixed(1)}%` : '';
             const uri = ref.location?.s3Location?.uri || '';
             const path = uri.replace(/^[a-z0-9]+:\/\//i, '').split(KEY_SEP).join('/');
-            const href = FILES_BASE + '/' + path.split('/').map(encodeURIComponent).join('/');
+            const href = FILES_BASE + '/' + path.split('/').map(encodeURIComponent).join('/') + '?dl=1';
             const label = path
                 ? `<a class="source-dl" href="${href}" download>${escapeHtml(path)}</a>`
                 : '<strong>document</strong>';

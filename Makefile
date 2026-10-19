@@ -35,7 +35,7 @@ S3_BUCKET ?= $(shell echo "$(notdir $(patsubst %/,%,$(subst \,/,$(DATA_FOLDER)))
 	| tr 'A-Z' 'a-z' | tr -cs 'a-z0-9.-' '-' \
 	| sed -e 's/^[^a-z0-9]*//' -e 's/[^a-z0-9]*$$//' -e 's/--*/-/g' | cut -c1-63)
 S3_PORT ?= 8333
-FILE_PORT ?= 8081
+FILER_PORT ?= 8888
 S3_EXTRA_BUCKETS ?=
 S3_BUCKETS = $(S3_BUCKET) basaltrock basaltrock-private-cloud $(S3_EXTRA_BUCKETS)
 
@@ -75,8 +75,7 @@ export SEED_ROOT = $(CURDIR)
 export S3_BUCKETS
 export DOCKER_DIR_PATH = $(abspath $(DOCKER_DIR))
 export INGESTION_S3_PATH = $(abspath $(PRIVATE_CLOUD_DIR)/ingestion-s3.py)
-export FILES_SERVER_PATH = $(abspath $(PRIVATE_CLOUD_DIR)/files-server.py)
-export FILE_PORT
+export FILER_PORT
 
 COMPOSE_S3 = $(COMPOSE) --profile s3
 
@@ -121,8 +120,7 @@ ingest-local:
 s3-up: fetch
 	$(COMPOSE_S3) up -d s3
 	@$(MAKE) --no-print-directory s3-buckets
-	FILES_S3_ENDPOINT=http://s3:8333 $(COMPOSE_S3) up -d files
-	@echo "S3 on http://localhost:$(S3_PORT), filer UI on http://localhost:8888"
+	@echo "S3 on http://localhost:$(S3_PORT), filer UI on http://localhost:$(FILER_PORT)"
 
 s3-down:
 	$(COMPOSE_S3) stop s3
