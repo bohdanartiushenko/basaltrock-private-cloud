@@ -79,7 +79,7 @@ export FILER_PORT
 
 COMPOSE_S3 = $(COMPOSE) --profile s3
 
-.PHONY: up down restart ingest ingest-local rtf2txt tune-models logs status prune help fetch ls store basaltrock-agent s3-up s3-down s3-pull s3-push s3-buckets s3-seed s3-ls s3-ingest
+.PHONY: up start stop down restart reindex ingest ingest-local rtf2txt tune-models logs status prune help fetch ls store basaltrock-agent s3-up s3-down s3-pull s3-push s3-buckets s3-seed s3-ls s3-ingest wait-api
 
 $(DOCKER_DIR)/docker-compose.yml:
 	@echo "Downloading basaltrock $(BASALTROCK_VERSION) from github.com/$(BASALTROCK_GH)"
@@ -94,14 +94,30 @@ up: fetch
 	@$(MAKE) --no-print-directory s3-push
 	@$(MAKE) --no-print-directory s3-ingest
 	$(COMPOSE_S3) up -d --build api
-	@echo "Waiting for API..."
-	@until curl -sf -X POST http://localhost:80/model/health/count-tokens -H "Content-Type: application/json" -d '{"input":{}}' >/dev/null 2>&1; do sleep 2; done
-	@echo "Ready: http://localhost:80"
+	@$(MAKE) --no-print-directory wait-api
+
+# Bring the stack back up on the existing volumes: no S3 push, no re-index.
+start: fetch
+	$(COMPOSE_S3) up -d --no-build s3 opensearch api
+	@$(MAKE) --no-print-directory wait-api
+
+# Stop the containers; volumes and the index survive.
+stop:
+	$(COMPOSE_S3) stop
 
 down:
 	$(COMPOSE_S3) down
 
-restart: down up
+# Stop and start again on the existing index.
+restart: stop start
+
+# Full rebuild: tear the containers down and re-ingest (volumes still kept).
+reindex: down up
+
+wait-api:
+	@echo "Waiting for API..."
+	@until curl -sf -X POST http://localhost:80/model/health/count-tokens -H "Content-Type: application/json" -d '{"input":{}}' >/dev/null 2>&1; do sleep 2; done
+	@echo "Ready: http://localhost:80"
 
 ingest: s3-push s3-ingest
 
@@ -182,7 +198,11 @@ prune: down
 help:
 	@echo "make up        - Download basaltrock + start $(PROJECT_NAME) on :80"
 	@echo "make fetch     - Download basaltrock $(BASALTROCK_VERSION) only"
-	@echo "make down      - Stop (OpenSearch data kept)"
+	@echo "make start     - Start on the existing index (no re-ingest)"
+	@echo "make stop      - Stop the containers (index kept)"
+	@echo "make restart   - stop + start, no re-ingest"
+	@echo "make reindex   - down + up, re-pushes $(DATA_FOLDER) and re-indexes"
+	@echo "make down      - Stop and remove containers (OpenSearch data kept)"
 	@echo "make ingest    - Re-index after changing $(DATA_FOLDER)"
 	@echo "make store ... - Copy documents in or out, e.g."
 	@echo "                 make store sync ./archive store://archive"
